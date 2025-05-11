@@ -1,0 +1,62 @@
+// DISCLAIMER: This indicator is provided 100% free. You are welcome to use, modify, and share it as you wish.
+// SUPPORT AUTISM RESEARCH: If you find this indicator useful, please consider donating to The Brain Foundation through the Autism Research Coalition: https://www.classy.org/team/367276
+// FOLLOW MY WORK: Stay updated on liquidity indicators and market insights by following me on X: https://x.com/EnriqueBasurto
+
+//@version=6
+indicator("US Net Liquidity Tracker with Sentiment & Offset", overlay=false, scale=scale.right, format=format.volume)
+
+// --- Input Settings ---
+liquidity_smoothing = input.int(10, title="Smoothing Period", minval=1, group="Moving Average Settings")
+liquidity_src = input.timeframe("D", title="Data Source", display=display.none, group="Moving Average Settings")
+offset_bars = input.int(0, title="Offset (Bars)", tooltip="Shift the line chart back or forward in time. Positive values move forward, negative values move backward.")
+enable_fed_balance = input.bool(true, title="Show FED Balance", group="Data Settings")
+enable_us_tga = input.bool(true, title="Show US Treasury General Account", group="Data Settings")
+enable_overnight_rrp = input.bool(true, title="Show Overnight Reverse Repurchase Agreements", group="Data Settings")
+enable_earnings_remittances = input.bool(true, title="Show Earnings Remittances", group="Data Settings")
+sentiment_ema_period = input.int(10, title="Sentiment EMA Period", minval=1, group="Sentiment Settings")
+show_label = input.bool(true, title="Show Label", group="Label Settings")
+
+// --- Data Retrieval with FRED Symbols ---
+fed_asset = "FRED:WALCL"
+us_tga_asset = "FRED:WTREGEN"
+overnight_rrp_asset = "FRED:RRPONTSYD"
+earnings_remittances_asset = "FRED:RESPPLLOPNWW"
+
+// Fetch data and handle missing values with nz()
+fed_balance_security = nz(request.security(fed_asset, liquidity_src, close, gaps=barmerge.gaps_off), 0)
+us_tga_balance_security = nz(request.security(us_tga_asset, liquidity_src, close, gaps=barmerge.gaps_off), 0)
+overnight_rrp_balance_security = nz(request.security(overnight_rrp_asset, liquidity_src, close, gaps=barmerge.gaps_off), 0)
+earnings_remittances_balance_security = nz(request.security(earnings_remittances_asset, liquidity_src, close, gaps=barmerge.gaps_off), 0)
+
+// --- Assign Values Based on User Inputs ---
+fed_balance = enable_fed_balance ? fed_balance_security : 0.0
+us_tga_balance = enable_us_tga ? us_tga_balance_security : 0.0
+overnight_rrp_balance = enable_overnight_rrp ? overnight_rrp_balance_security : 0.0
+earnings_remittances_balance = enable_earnings_remittances ? earnings_remittances_balance_security : 0.0
+
+// --- Calculate Global Balance ---
+global_balance = fed_balance - us_tga_balance - overnight_rrp_balance - earnings_remittances_balance
+
+// --- Smooth Global Balance with SMA ---
+global_balance_smoothed = ta.sma(global_balance, liquidity_smoothing)
+
+// --- Sentiment Color Logic with EMA ---
+var bool sentiment_state = true
+sentiment_ema = ta.ema(global_balance_smoothed, sentiment_ema_period)
+if ta.crossover(global_balance_smoothed, sentiment_ema)
+    sentiment_state := true
+else if ta.crossunder(global_balance_smoothed, sentiment_ema)
+    sentiment_state := false
+sentimentColor = sentiment_state ? color.rgb(101, 171, 103) : color.rgb(197, 10, 10)
+
+// --- Plot Net Liquidity with Offset ---
+plot(global_balance_smoothed, color=sentimentColor, linewidth=2, offset=offset_bars, title="US Net Liquidity")
+
+// --- Plot Fed Balance Sheet Rate of Change ---
+//fed_balance_roc = ta.roc(fed_balance, 1)
+//plot(fed_balance_roc, color=color.orange, linewidth=1, title="Fed Balance Sheet ROC")
+
+// --- Display Label on Last Bar ---
+//if show_label and barstate.islast
+//    label_text = "US Net Liquidity: " + str.tostring(global_balance_smoothed, "#.##")
+//    label.new(bar_index + 10 + offset_bars, global_balance_smoothed, text=label_text, color=sentimentColor, textcolor=color.white, style=label.style_label_left)
